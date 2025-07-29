@@ -43,14 +43,14 @@ Text filter: Hide posts with these words or phrases (not case sensitive).
 
 How It Works
   Finds posts by users on your blacklist, by verified users, or posts containing filtered words.
+  
   Hides those posts from your feed.
+  
   Whitelisted users always show up (checkmark optional).
+  
   (Optional) A filter counter appears at the top right of the page and also shows you the ratio between verified and "unverified" posts
-    - turn this on if you want to be grossed out by how much Meta pushes this crap in your face!
-
-Credits
-
-Made by artificialsweetener.ai
+  
+  - turn this on if you want to be grossed out by how much Meta pushes this crap in your face!
 
 If you like this, gimme a star! ⭐
 If you find a bug or want to suggest a feature, open an issue here.
