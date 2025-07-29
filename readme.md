@@ -35,8 +35,10 @@ const ENABLE_FILTER_COUNT = 0; // 1 = show filter counter
 const ENABLE_HIDE_CHECKMARKS = 1; // 1 = hide all checkmarks
 const ENABLE_NO_FILTER_ON_PROFILES = 1; // 1 = pause filter on profile pages
 ```
-Whitelist: Verified users you want to see (no checkmarks if you don’t want them).    
+Whitelist: Verified users you want to see (no checkmarks if you don’t want them).
+
 Blacklist: Any users you don’t want to see at all.
+
 Text filter: Hide posts with these words or phrases (not case sensitive).
 
 How It Works
