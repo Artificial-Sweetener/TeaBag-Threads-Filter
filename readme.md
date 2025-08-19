@@ -31,7 +31,9 @@ The panel is where you tell the script what to do:
 When you're done making changes, just hit **'Save & Apply'**.
 
 If you like this, gimme a star! ⭐
+
 If you find a bug or want to suggest a feature, open an issue here.
+
 Enjoy a feed that's actually yours. <3
 
 - ArtificialSweetener
