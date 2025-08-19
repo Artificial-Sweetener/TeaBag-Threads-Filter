@@ -1,62 +1,35 @@
-# TeaBag – Threads Filter
+# TeaBag: a Filter for Threads
 
-Welcome to **TeaBag**! Just like a tea bag filters out the leaves, this userscript filters out the posts you don’t want to see on [threads.com](https://www.threads.com).
+You wouldn't drink tea without a filter, right? You'd get a mouthful of bitter leaves. That's what my Threads feed felt like. I built TeaBag to be the filter it desperately needed.
 
----
+You should be in control of the things you see online, and TeaBag is here to help you with that. Simple.
 
-## Features
+### So, here's what it actually does.
 
-- **Hide posts from verified users** (with optional whitelist)
-- **Block posts from specific users** (without actually blocking them)
-- **Filter posts containing certain words or phrases**
-- **Optionally hide blue checkmarks everywhere**
-- **(Optional) See how many posts have been filtered**
+#### Smart Content Filtering
+Threads loves showing you posts from verified accounts you don't care about. Meta claims they don't place verified users higher in the feed, but I've measured a ratio of 1:1 before; a whole HALF of my feed was these annoying verified people!! Gross.
 
----
+I don't think I should have to see your shitty posts just because you paid Mark Zuckerberg for the priviledge. That's why TeaBag hides every single one of them by default, and you will be SHOCKED at how it will improve the quality of your Threads feed. Think: what kind of person pays MONEY to get boosted on social media? Someone whose posts you wanna see?
 
-## Installation
+If there's a verified account you actually like for some reason, just add them to the whitelist and they can stay. In addition, there's a blacklist for people who you don't wanna see but don't wanna block, and you can also build a list of filtered phrases... imagine a world where you never see another "that's it, that's the post". You're welcome.
 
-1. Install a userscript manager (like [Violentmonkey](https://violentmonkey.github.io/)).
-2. Open the raw .js file from this repository or copy the script into a new userscript in your manager.
-3. Visit [threads.com](https://www.threads.com) and you’re good to go!
+#### Two times the filter does not work on purpose
+You will still see replies to your posts from people who would otherwise be filtered, and the filter is paused on profiles since it would be kinda silly if you went to a verified person's profile and all their posts were filtered.
 
----
+### How to Use It
 
-## Configuration
+1.  First, you need a userscript manager like [**Violentmonkey**](https://violentmonkey.github.io/) or [**Tampermonkey**](https://www.tampermonkey.net/).
+2.  Install my script from this repository. Your userscript manager will prompt you to confirm the installation.
+3.  Once it's installed, go to Threads. To open the control panel, click your **userscript manager's icon** in your browser's toolbar. A menu will appear where you can see all your running scripts. Find and click on **'TeaBag Filter Settings'**.
 
-Edit the script’s config section to customize your experience:
+The panel is where you tell the script what to do:
 
-```js
-const whitelist = new Set(['goodperson1', 'goodperson2']);
-const blacklist = new Set(['badperson1', 'badperson2']);
-const textFilterList = new Set(['giveaway']);
+-   **Verified Filter Mode**: This is the main toggle for verified accounts. `Filter All` is the default; it hides posts from verified users unless they are on your whitelist. `Show All` disables this specific filter entirely.
+-   **The Lists**: These are the core of your filter. They're simple text boxes where you add items one per line. The **Whitelist** is for verified users you *want* to see. The **Blacklist** is for *any* user you want to hide completely. The **Filtered Words** list will hide any post that contains those words or phrases.
+-   **General Toggles**: These are simple on/off switches for the other features. You can hide all checkmarks, hide the 'Suggested for you' box, and turn on the little counter that shows you how much junk is being filtered.
 
-const ENABLE_FILTER_COUNT = 0; // 1 = show filter counter
-const ENABLE_HIDE_CHECKMARKS = 1; // 1 = hide all checkmarks
-const ENABLE_NO_FILTER_ON_PROFILES = 1; // 1 = pause filter on profile pages
-```
+When you're done making changes, just hit **'Save & Apply'**.
 
-    Whitelist: Verified users you want to see (no checkmarks if you don’t want them).
+Enjoy a feed that's actually yours. <3
 
-    Blacklist: Any users you don’t want to see at all.
-
-    Text filter: Hide posts with these words or phrases (not case sensitive).
-
-How It Works
-
-    Finds posts by users on your blacklist, by verified users, or posts containing filtered words.
-
-    Hides those posts from your feed.
-
-    Whitelisted users always show up (checkmark optional).
-
-    (Optional) A filter counter appears at the top right of the page and also shows you the ratio between verified and "unverified" posts - turn this on if you want to be grossed out by how much Meta pushes this crap in your face!
-
-Credits
-
-Made by artificialsweetener.ai
-
-If you like this, gimme a star! ⭐
-If you find a bug or want to suggest a feature, open an issue here.
-
-Enjoy your freshly filtered threads! ☕
+- ArtificialSweetener

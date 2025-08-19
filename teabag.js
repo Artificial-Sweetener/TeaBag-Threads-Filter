@@ -1,34 +1,22 @@
 // ==UserScript==
 // @name         TeaBag - Threads Filter
 // @namespace    https://www.threads.com
-// @version      1.0
-// @description  Filter out unwanted content on threads: hide verified users with optional whitelist, block users without blocking them by just filtering all their posts, filter specific words or phrases
+// @version      2.0
+// @description  Filter out unwanted content on threads: hide verified users with optional whitelist, block users, and filter specific words.
 // @author       artificialsweetener.ai, https://artificialsweetener.ai
 // @match        https://www.threads.com/*
-// @grant        none
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
 // @run-at       document-start
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    // --- Configuration ---
-    // Set to 1 if you want to know how many posts that have been filtered. It will be a big number after just a little scrolling!
-    const ENABLE_FILTER_COUNT = 0;
-    // If you want to hide checkmarks even in situations where verified users are visible to you - like on profiles or if they're whitelisted - keep this at 1. 0 will bring back the checkmarks for whitelisted verified users.
-    const ENABLE_HIDE_CHECKMARKS = 1;
-    // You can set this to 0 and filter verified posts even on profile pages. You might want this so you don't see reposts of verified users BUT if you ever visit a verified user's profile the script will just recursively eat all their posts which is... slow and pointless.
-    const ENABLE_NO_FILTER_ON_PROFILES = 1;
-
-    // --- Whitelist, Blacklist, & Text Filter ---
-    // List of Threads usernames - the part after the @. These are verified users you don't want to be filtered. They will appear without their checkmark.
-    const whitelist = new Set(['goodperson1', 'goodperson2'].map(u => u.toLowerCase()));
-    // List of Threads usernames - the part after the @. These are users you don't want to see, even ones that are not verified. They will be filtered just like verified users are.
-    const blacklist = new Set(['badperson1', 'badperson2'].map(u => u.toLowerCase()));
-    // List of words or phrases you want the filter to take out of the feed. These will be matched verbatim but not case sensitive.
-    const textFilterList = new Set(['giveaway'].map(t => t.toLowerCase()));
-
     // --- Script State ---
+    let settings = {};
+    const processedPostIds = new Set();
     let filteredCount = 0;
     let normalUserPostCount = 0;
     let verifiedUserPostCount = 0;
@@ -36,127 +24,292 @@
     let lastUrl = location.href;
     let debounceTimer;
 
-    // --- Core Functions ---
+    // --- Settings Management ---
+    function loadSettings() {
+        const defaults = {
+            enableFilterCount: true,
+            enableHideCheckmarks: true,
+            enableNoFilterOnProfiles: true,
+            hideSuggestions: true,
+            verifiedFilterMode: 'filter_all',
+            whitelist: '',
+            blacklist: '',
+            textFilterList: ''
+        };
+        settings = GM_getValue('teabag_settings', defaults);
+        delete settings.ratioValue;
 
-    /**
-     * Calculates the Greatest Common Divisor of two numbers for ratio simplification.
-     * @param {number} a
-     * @param {number} b
-     * @returns {number}
-     */
-    function gcd(a, b) {
-        return b === 0 ? a : gcd(b, a % b);
+        for (const key in defaults) {
+            if (typeof settings[key] === 'undefined') {
+                settings[key] = defaults[key];
+            }
+        }
     }
 
+    function textToSet(text) {
+        if (!text) return new Set();
+        return new Set(text.split('\n').map(u => u.trim().toLowerCase()).filter(Boolean));
+    }
+
+    // --- Core Filtering Logic ---
+    function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
+
+    function toggleGlobalCheckmarkHiding() {
+        if (settings.enableHideCheckmarks) {
+            document.body.classList.add('teabag-hide-checkmarks');
+        } else {
+            document.body.classList.remove('teabag-hide-checkmarks');
+        }
+    }
+
+    function hideSuggestionBox() {
+        const previouslyHidden = document.querySelector('[data-teabag-hidden-suggestion]');
+        if (previouslyHidden) {
+            previouslyHidden.style.display = '';
+            delete previouslyHidden.dataset.teabagHiddenSuggestion;
+        }
+        if (!settings.hideSuggestions) return;
+
+        const allSpans = document.querySelectorAll('span');
+        for (const span of allSpans) {
+            if (span.textContent.trim() === 'Suggested for you') {
+                const titleContainer = span.closest('div > div > div > div');
+                if (titleContainer && titleContainer.parentElement) {
+                    const moduleContainer = titleContainer.parentElement;
+                    moduleContainer.style.display = 'none';
+                    moduleContainer.dataset.teabagHiddenSuggestion = 'true';
+                    return;
+                }
+            }
+        }
+    }
+
+    function processPost(post) {
+        const timeLink = post.querySelector('a time');
+        if (!timeLink) return;
+        const postLink = timeLink.closest('a');
+        if (!postLink || !postLink.href.includes('/post/')) return;
+        const postId = postLink.href.substring(postLink.href.lastIndexOf('/') + 1);
+
+        if (processedPostIds.has(postId)) return;
+        processedPostIds.add(postId);
+
+        const userLink = post.querySelector('a[href^="/@"]');
+        if (!userLink) return;
+
+        const username = userLink.getAttribute('href').substring(2).toLowerCase();
+        const verifiedBadge = post.querySelector('svg[aria-label="Verified"]');
+        const isOnProfilePage = settings.enableNoFilterOnProfiles && location.pathname.startsWith('/@');
+
+        if (verifiedBadge) verifiedUserPostCount++; else normalUserPostCount++;
+
+        let shouldHide = false;
+        const whitelistSet = textToSet(settings.whitelist);
+        const blacklistSet = textToSet(settings.blacklist);
+        const textFilterSet = textToSet(settings.textFilterList);
+
+        if (isOnProfilePage) {
+            // No post hiding on profiles.
+        } else if (blacklistSet.has(username)) {
+            shouldHide = true;
+        } else {
+            const postText = post.innerText.toLowerCase();
+            for (const filterText of textFilterSet) {
+                if (postText.includes(filterText)) { shouldHide = true; break; }
+            }
+        }
+
+        const isVerified = verifiedBadge && !whitelistSet.has(username);
+        if (!shouldHide && !isOnProfilePage) {
+            if (settings.verifiedFilterMode === 'filter_all' && isVerified) {
+                shouldHide = true;
+            }
+        }
+
+        if (shouldHide) {
+            if (post.style.display !== 'none') {
+                post.style.display = 'none';
+                filteredCount++;
+            }
+        } else {
+            if (post.style.display === 'none') {
+                 post.style.display = '';
+            }
+        }
+    }
+
+    function runFilter(forceClear = false) {
+        if (forceClear) {
+            document.querySelectorAll('div[data-pressable-container="true"], article[role="article"]').forEach(el => el.style.display = '');
+            filteredCount = 0;
+            normalUserPostCount = 0;
+            verifiedUserPostCount = 0;
+            processedPostIds.clear();
+        }
+        if (location.href !== lastUrl) {
+            lastUrl = location.href;
+            if (!location.pathname.startsWith('/@')) runFilter(true);
+        }
+
+        hideSuggestionBox();
+        toggleGlobalCheckmarkHiding();
+
+        const postSelector = 'div[data-pressable-container="true"], article[role="article"]';
+        document.querySelectorAll(postSelector).forEach(processPost);
+        updateCounterDisplay();
+    }
+
+    const debouncedRunFilter = () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => runFilter(false), 150); };
+
+    // --- UI & Initialization ---
     function injectGlobalCSS() {
         const css = `
-            /*
-             * This single rule sets the cursor for the entire post container back to the default.
-             * This makes the post text easily selectable and removes the "click hand" from the header.
-             * Links inside the post (like the timestamp and username) will still have their natural pointer cursor.
-             */
-            div[data-pressable-container="true"] {
-                cursor: default !important;
+            /* --- Global Filter Styles --- */
+            .teabag-hide-checkmarks svg[aria-label="Verified"] { display: none !important; }
+
+            /* --- Fluent Design Settings Panel --- */
+            #teabag-settings-panel-overlay {
+                --accent-color: #007AFF; --bg-color: rgba(28, 28, 28, 0.7); --border-color: rgba(255, 255, 255, 0.15);
+                --text-color-primary: #FFFFFF; --text-color-secondary: #c0c0c0; --input-bg-color: rgba(55, 55, 55, 0.8);
+                --hover-bg-color: rgba(70, 70, 70, 0.9); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                color: var(--text-color-primary); position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center;
+                background: rgba(0, 0, 0, 0.3); backdrop-filter: blur(16px) saturate(180%); opacity: 0; animation: teabagFadeIn 0.3s ease forwards;
             }
+            @keyframes teabagFadeIn { to { opacity: 1; } }
+            .teabag-form {
+                background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                width: 650px; max-height: 90vh; overflow-y: auto; padding: 24px; transform: scale(0.95); animation: teabagScaleUp 0.3s ease forwards;
+            }
+            @keyframes teabagScaleUp { to { transform: scale(1); } }
+            .teabag-form h2 { margin: 0 0 20px 0; text-align: center; font-size: 22px; font-weight: 600; color: var(--text-color-primary) !important; }
+            .teabag-form fieldset { border: none; padding: 0; margin: 0 0 20px 0; }
+            .teabag-form legend { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--text-color-primary) !important; }
+            .teabag-form .description { font-size: 12px; color: var(--text-color-secondary); margin-top: -6px; margin-left: 28px; }
+            .teabag-form .radio-label, .teabag-form .checkbox-label {
+                display: flex; align-items: center; padding: 10px; border-radius: 8px; cursor: pointer;
+                transition: background-color 0.2s ease; margin-bottom: 4px; color: var(--text-color-primary);
+            }
+            .teabag-form .radio-label:hover, .teabag-form .checkbox-label:hover { background: var(--hover-bg-color); }
+            .teabag-form input[type="radio"], .teabag-form input[type="checkbox"] { margin-right: 12px; accent-color: var(--accent-color); width: 16px; height: 16px; }
+            .teabag-form textarea { width: 100%; background: var(--input-bg-color); color: var(--text-color-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; font-family: "SF Mono", "Consolas", monospace; box-sizing: border-box; resize: vertical; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+            .teabag-form textarea:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 2px var(--accent-color); }
+            .teabag-form .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+            .teabag-form button { border-radius: 8px; font-weight: 600; font-size: 14px; padding: 10px 20px; cursor: pointer; border: 1px solid transparent; transition: all 0.2s ease; }
+            .teabag-form button#teabag-cancel { background: var(--input-bg-color); border-color: var(--border-color); color: var(--text-color-primary); }
+            .teabag-form button#teabag-cancel:hover { background: var(--hover-bg-color); }
+            .teabag-form button#teabag-save { background: var(--accent-color); color: white; }
+            .teabag-form button#teabag-save:hover { filter: brightness(1.1); }
         `;
         const styleSheet = document.createElement("style");
         styleSheet.innerText = css;
         document.head.appendChild(styleSheet);
     }
 
+    function createSettingsPanel() {
+        if (document.getElementById('teabag-settings-panel-overlay')) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'teabag-settings-panel-overlay';
+        const form = document.createElement('div');
+        form.className = 'teabag-form';
+        overlay.appendChild(form);
+
+        const createElement = (tag, { className = '', textContent = '', ...props }, children = []) => {
+            const el = document.createElement(tag);
+            if (className) el.className = className;
+            if (textContent) el.textContent = textContent;
+            Object.assign(el, props);
+            children.forEach(child => el.appendChild(child));
+            return el;
+        };
+
+        const createFieldset = (legend, children) => createElement('fieldset', {}, [createElement('legend', { textContent: legend }), ...children]);
+        const createTextareaGroup = (id, label, rows) => createElement('div', {}, [
+            createElement('label', { htmlFor: id, textContent: label, style: { display: 'block', marginBottom: '8px' } }),
+            createElement('textarea', { id, rows, value: settings[id.replace('teabag-', '')] })
+        ]);
+        const createInput = (type, name, { id, value, label, description, checked }) => {
+            const input = createElement('input', { type, name, id, value, checked });
+            const labelEl = createElement('label', { className: `${type}-label`, htmlFor: id }, [input]);
+            const textWrapper = createElement('div', {});
+            textWrapper.appendChild(createElement('span', { textContent: label }));
+            if (description) {
+                textWrapper.appendChild(createElement('p', { className: 'description', textContent: description }));
+            }
+            labelEl.appendChild(textWrapper);
+            return labelEl;
+        };
+
+        const generalOptions = createFieldset('General Options', [
+            createInput('checkbox', '', { id: 'teabag-enableFilterCount', label: 'Enable Filter Counter', checked: settings.enableFilterCount }),
+            createInput('checkbox', '', { id: 'teabag-enableHideCheckmarks', label: 'Hide All Verified Checkmarks', checked: settings.enableHideCheckmarks }),
+            createInput('checkbox', '', { id: 'teabag-enableNoFilterOnProfiles', label: 'Disable Filtering on Profile Pages', checked: settings.enableNoFilterOnProfiles }),
+            createInput('checkbox', '', { id: 'teabag-hideSuggestions', label: 'Hide \'Suggested for you\' Box', checked: settings.hideSuggestions })
+        ]);
+
+        const verifiedModeOptions = createFieldset('Verified User Filtering', [
+            createInput('radio', 'verifiedFilterMode', { id: 'teabag-mode-filter', value: 'filter_all', label: 'Filter All', description: 'Hide all posts from verified users not on your whitelist.', checked: settings.verifiedFilterMode === 'filter_all' }),
+            createInput('radio', 'verifiedFilterMode', { id: 'teabag-mode-show', value: 'show_all', label: 'Show All', description: 'Do not filter users based on their verified status.', checked: settings.verifiedFilterMode === 'show_all' })
+        ]);
+
+        const listsContainer = createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' } }, [
+            createTextareaGroup('teabag-whitelist', 'Whitelist (one per line)', 10),
+            createTextareaGroup('teabag-blacklist', 'Blacklist (one per line)', 10)
+        ]);
+        const wordFilter = createTextareaGroup('teabag-textFilterList', 'Filtered Words (one per line)', 5);
+
+        const saveButton = createElement('button', { id: 'teabag-save', textContent: 'Save & Apply' });
+        const cancelButton = createElement('button', { id: 'teabag-cancel', textContent: 'Cancel' });
+        const actions = createElement('div', { className: 'form-actions' }, [cancelButton, saveButton]);
+
+        form.append(createElement('h2', { textContent: 'TeaBag Filter Settings' }), generalOptions, verifiedModeOptions, listsContainer, wordFilter, actions);
+        document.body.appendChild(overlay);
+
+        saveButton.onclick = () => {
+            settings = {
+                enableFilterCount: form.querySelector('#teabag-enableFilterCount').checked,
+                enableHideCheckmarks: form.querySelector('#teabag-enableHideCheckmarks').checked,
+                enableNoFilterOnProfiles: form.querySelector('#teabag-enableNoFilterOnProfiles').checked,
+                hideSuggestions: form.querySelector('#teabag-hideSuggestions').checked,
+                verifiedFilterMode: form.querySelector('input[name="verifiedFilterMode"]:checked').value,
+                whitelist: form.querySelector('#teabag-whitelist').value,
+                blacklist: form.querySelector('#teabag-blacklist').value,
+                textFilterList: form.querySelector('#teabag-textFilterList').value
+            };
+            GM_setValue('teabag_settings', settings);
+            overlay.remove();
+            runFilter(true);
+        };
+        cancelButton.onclick = () => overlay.remove();
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    }
+
     function updateCounterDisplay() {
-        if (!ENABLE_FILTER_COUNT) return;
+        if (!settings.enableFilterCount) { if (counterDisplay) counterDisplay.style.display = 'none'; return; }
         if (!counterDisplay) {
             counterDisplay = document.createElement('div');
             Object.assign(counterDisplay.style, {
-                position: 'fixed', top: '10px', right: '10px', backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                color: 'white', padding: '5px 10px', borderRadius: '5px', zIndex: '1000',
-                fontSize: '14px', fontFamily: 'sans-serif'
+                position: 'fixed', top: '10px', right: '10px', backgroundColor: 'rgba(0, 0, 0, 0.8)', color: 'white',
+                padding: '5px 10px', borderRadius: '5px', zIndex: '100001', fontSize: '14px', fontFamily: 'sans-serif'
             });
             document.body.appendChild(counterDisplay);
         }
+        counterDisplay.style.display = 'block';
         const isOnProfilePage = location.pathname.startsWith('/@');
-        if (ENABLE_NO_FILTER_ON_PROFILES && isOnProfilePage) {
+        if (settings.enableNoFilterOnProfiles && isOnProfilePage) {
             counterDisplay.innerText = `[Filter paused on profiles]`;
         } else {
             let ratioText = '0:0';
-            // Calculate the simplified ratio of Normal:Verified posts
             if (normalUserPostCount > 0 || verifiedUserPostCount > 0) {
                 const divisor = gcd(normalUserPostCount, verifiedUserPostCount);
-                const simplifiedNormal = normalUserPostCount / divisor;
-                const simplifiedVerified = verifiedUserPostCount / divisor;
-                ratioText = `${simplifiedNormal}:${simplifiedVerified}`;
+                ratioText = `${(normalUserPostCount / divisor)}:${(verifiedUserPostCount / divisor)}`;
             }
-            counterDisplay.innerText = `[Filtered: ${filteredCount} | Ratio: ${ratioText}]`;
+            counterDisplay.innerText = `[Filtered: ${filteredCount} | Ratio (N:V): ${ratioText}]`;
         }
     }
 
-    function processPost(post) {
-        post.dataset.filtered = 'true';
-        const userLink = post.querySelector('a[href^="/@"]');
-        if (!userLink) return;
-
-        const username = userLink.getAttribute('href').substring(2).toLowerCase();
-        const verifiedBadge = post.querySelector('svg[aria-label="Verified"]');
-        const isOnProfilePage = ENABLE_NO_FILTER_ON_PROFILES && location.pathname.startsWith('/@');
-
-        // Increment counts for every post processed, regardless of other conditions.
-        if (verifiedBadge) {
-            verifiedUserPostCount++;
-        } else {
-            normalUserPostCount++;
-        }
-
-        if (isOnProfilePage) {
-            if (verifiedBadge && ENABLE_HIDE_CHECKMARKS) verifiedBadge.style.display = 'none';
-            return;
-        }
-
-        if (blacklist.has(username)) {
-            post.style.display = 'none';
-            filteredCount++;
-            return;
-        }
-
-        const postText = post.innerText.toLowerCase();
-        for (const filterText of textFilterList) {
-            if (postText.includes(filterText)) {
-                post.style.display = 'none';
-                filteredCount++;
-                return;
-            }
-        }
-
-        if (whitelist.has(username)) {
-            if (verifiedBadge && ENABLE_HIDE_CHECKMARKS) verifiedBadge.style.display = 'none';
-            return;
-        }
-
-        if (verifiedBadge) {
-            post.style.display = 'none';
-            filteredCount++;
-        }
-    }
-
-    function runFilter() {
-        if (location.href !== lastUrl) {
-            lastUrl = location.href;
-            if (!location.pathname.startsWith('/@')) {
-                filteredCount = 0;
-                normalUserPostCount = 0;
-                verifiedUserPostCount = 0;
-            }
-        }
-
-        const postSelector = 'div.x1ypdohk.x1n2onr6.xwag103';
-        document.querySelectorAll(`${postSelector}:not([data-filtered])`).forEach(processPost);
-        updateCounterDisplay();
-    }
-
-    const debouncedRunFilter = () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(runFilter, 150);
-    };
+    // --- Initial Load ---
+    loadSettings();
+    GM_registerMenuCommand('TeaBag Filter Settings', createSettingsPanel);
 
     window.addEventListener('DOMContentLoaded', () => {
         injectGlobalCSS();
