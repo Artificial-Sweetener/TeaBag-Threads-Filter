@@ -1,5 +1,9 @@
 # TeaBag: a Filter for Threads
 
+## Archived
+
+TeaBag is retired. I rolled everything forward into [Bobbin - Threads Filter](https://github.com/Artificial-Sweetener/bobbin-threads-filter), which is the version I recommend using now.
+
 You wouldn't drink tea without a filter, right? You'd get a mouthful of bitter leaves. That's what my Threads feed felt like. I built TeaBag to be the filter it desperately needed.
 
 You should be in control of the things you see online, and TeaBag is here to help you with that. Simple.
